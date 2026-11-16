@@ -39,7 +39,10 @@ async function main() {
     server.once("error", reject);
     server.listen(port, resolve);
   });
-  const stopWorker = startWorker();
+  const stopWorker =
+    process.env.ENABLE_CAMPAIGN_WORKER === "true"
+      ? startWorker()
+      : async () => {};
   console.log(`Backend listening on port ${server.address().port}`);
   let stopping = false;
   // Stop accepting requests, finish active worker work, then close MongoDB.
@@ -62,7 +65,7 @@ if (require.main === module) {
     console.error(
       "Backend startup failed:",
       error.name,
-      "Check database connectivity and environment configuration."
+      "Check database connectivity and environment configuration.",
     );
     mongoose.disconnect().finally(() => {
       process.exitCode = 1;
