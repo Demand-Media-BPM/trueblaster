@@ -8,6 +8,7 @@ const allowedOrigins = [
   "https://13.218.96.234:5000",
   "https://truenotsendr.com",
   "https://truesendr007.netlify.app",
+  "https://app.demandmediaglobal.com",
 ];
 
 const corsOptions = {
