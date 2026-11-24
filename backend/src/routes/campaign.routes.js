@@ -19,6 +19,7 @@ router.get("/campaign-details", authenticate, controller.getCampaignDetails);
 router.get("/campaign-ids", authenticate, controller.listCampaignIds);
 router.get("/contact-lists", authenticate, controller.listContactLists);
 router.get("/track-unsubscribe", tracking.trackUnsubscribe);
+router.post("/track-unsubscribe", express.urlencoded({ extended: false, limit: "2kb" }), tracking.trackUnsubscribe);
 router.post("/send-test-mail", authenticate, mail.sendTestMail);
 router.get("/campaign-csv", authenticate, controller.exportCampaignCsv);
 

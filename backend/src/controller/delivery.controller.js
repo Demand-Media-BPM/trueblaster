@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { HttpError } = require("../middleware/request");
 const Campaign = require("../models/campaign.model");
 const CampaignRecipient = require("../models/campaignRecipient.model");
 const Suppression = require("../models/suppression.model");
@@ -40,7 +41,7 @@ async function processCampaign(campaign, owner, sendEmail = mail.sendEmail) {
   }, 15000);
   heartbeat.unref();
   try {
-    // A crash after SES accepts a message cannot be safely retried automatically.
+    // A crash after provider acceptance cannot be safely retried automatically.
     await CampaignRecipient.updateMany(
       { ...scope, status: "sending" },
       {
@@ -69,7 +70,7 @@ async function processCampaign(campaign, owner, sendEmail = mail.sendEmail) {
             }
             const claimed = await CampaignRecipient.findOneAndUpdate(
               { ...scope, _id: recipient._id, status: "pending" },
-              { $set: { status: "sending", attemptedAt: new Date() } },
+              { $set: { status: "sending", attemptedAt: new Date(), sendAttemptId: crypto.randomUUID(), provider: "sendgrid" } },
               { new: true }
             );
             if (!claimed) return;
@@ -94,21 +95,20 @@ async function processCampaign(campaign, owner, sendEmail = mail.sendEmail) {
             }
             let messageId;
             try {
-              messageId = await sendEmail(campaign, claimed);
+              const snapshot = campaign.toObject();
+              mail.checkCampaignConfig(workspace);
+              require("../config/local-safety").assertSend(snapshot, claimed);
+              // Old queued campaigns can inherit workspace configuration without changing stored content.
+              snapshot.compliance = mail.complianceConfig(workspace, campaign);
+              messageId = await sendEmail(snapshot, claimed);
             } catch (error) {
-              const definite = [
-                "MessageRejected",
-                "MailFromDomainNotVerifiedException",
-                "AccountSendingPausedException",
-                "ConfigurationSetDoesNotExistException",
-                "InvalidParameterValue",
-              ].includes(error.name);
+              const definite = error.definiteRejection === true || error instanceof HttpError;
               await CampaignRecipient.updateOne(
                 { ...scope, _id: claimed._id, status: "sending" },
                 {
                   $set: {
                     status: definite ? "failed" : "unknown",
-                    error: String(error.message).slice(0, 500),
+                    error: /^(SendGrid|HttpError)/.test(error.name) || error instanceof HttpError ? String(error.message).slice(0, 500) : "Provider request interrupted; verify delivery before retrying",
                   },
                 }
               );
@@ -117,7 +117,7 @@ async function processCampaign(campaign, owner, sendEmail = mail.sendEmail) {
             // If persistence fails, leave this recipient in 'sending'; recovery marks it unknown instead of resending.
             await CampaignRecipient.updateOne(
               { ...scope, _id: claimed._id, status: "sending" },
-              { $set: { status: "accepted", messageId, sendAt: new Date() } }
+              { $set: { status: "accepted", messageId, sendAt: new Date(), deliveryStatus: "accepted" } }
             );
           })
         );
@@ -149,16 +149,19 @@ function startWorker() {
   async function tick() {
     if (busy || stopping) return;
     try {
-      mail.checkMailConfig();
+      mail.checkCampaignConfig();
     } catch {
       return;
     }
     busy = true;
     let campaign;
     try {
-      // Atomically claim a due campaign or recover one whose worker lease expired.
+      // Only this project's new SendGrid campaigns may be claimed. Legacy SES queues require manual review.
       campaign = await Campaign.findOneAndUpdate(
         {
+          ...(require("../config/local-safety").testMode() ? { testMode: true, testRunId: process.env.SENDGRID_TEST_RUN_ID } : { testMode: { $ne: true } }),
+          provider: "sendgrid",
+          sendgridProject: process.env.SENDGRID_PROJECT_ID,
           scheduleTime: { $lte: new Date() },
           $or: [
             { status: { $in: ["queued", "scheduled"] } },

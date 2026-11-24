@@ -2,10 +2,10 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
-const { MongoMemoryReplSet } = require("mongodb-memory-server");
+const { testDatabase } = require("./helpers/database");
 
 test("node server.js connects MongoDB and serves the frontend API over HTTP", { timeout: 120000 }, async () => {
-  const replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  const replica = await testDatabase("startup_tests");
   let child;
 
   try {
@@ -14,12 +14,15 @@ test("node server.js connects MongoDB and serves the frontend API over HTTP", { 
       windowsHide: true,
       env: {
         ...process.env,
+        NODE_ENV: "test",
         MONGO_URI: replica.getUri("startup_tests"),
         PORT: "0",
         AUTH_SECRET: "a".repeat(64),
         TRACKING_SECRET: "t".repeat(64),
         PUBLIC_API_URL: "http://localhost:5000",
-        // Disable SES so startup verification cannot send any real email.
+        // Disable campaign delivery so startup verification cannot send any email.
+        ENABLE_CAMPAIGN_WORKER: "false",
+        SENDGRID_API_KEY: "",
         AWS_ACCESS_KEY_ID: "",
         AWS_SECRET_ACCESS_KEY: "",
         FORCE_SES_REGION: "",

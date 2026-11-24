@@ -14,8 +14,13 @@ const models = {
 
 async function connectDatabase() {
   if (!process.env.MONGO_URI) throw new Error("MONGO_URI is required");
-  await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 10000 });
-  for (const model of Object.values(models)) await model.init();
+  require("./local-safety").assertLocalDatabase(process.env.MONGO_URI);
+  const shared = require("./local-safety").usingSharedDatabaseLocally();
+  await mongoose.connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 10000, autoIndex: !shared, autoCreate: !shared,
+  });
+  // Shared production data uses its existing collections/indexes; local startup must not migrate them.
+  if (!shared) for (const model of Object.values(models)) await model.init();
 }
 
 module.exports = { connectDatabase };

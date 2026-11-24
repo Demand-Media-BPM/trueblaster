@@ -1,4 +1,4 @@
-const { checkMailConfig } = require("../controller/mail.controller");
+const { checkMailConfig, checkCampaignConfig, resolveSender } = require("../controller/mail.controller");
 const User = require("../models/user.model");
 const Workspace = require("../models/workspace.model");
 const { verifyPassword, sign, hashPassword } = require("../middleware/auth");
@@ -26,10 +26,13 @@ function sessionDetails(user, workspace) {
   const senderEmail = workspace.senderEmail || process.env.FROM_EMAIL || "";
   let mailConfigured = false;
   try {
-    checkMailConfig();
-    normalizeEmail(senderEmail);
+    checkMailConfig({ preview: true });
+    resolveSender(workspace);
     mailConfigured = true;
   } catch { }
+  let campaignConfigured = false, mailConfigurationMessage = "";
+  try { checkCampaignConfig(workspace); campaignConfigured = true; }
+  catch (error) { mailConfigurationMessage = error.status ? error.message : "Campaign configuration is incomplete"; }
   return {
     user: {
       firstName: user.firstName,
@@ -37,7 +40,7 @@ function sessionDetails(user, workspace) {
       email: user.email,
       role: user.role,
     },
-    workspace: { id: workspace._id, name: workspace.name, senderEmail, mailConfigured },
+    workspace: { id: workspace._id, name: workspace.name, senderEmail, mailConfigured, campaignConfigured, mailConfigurationMessage },
   };
 }
 

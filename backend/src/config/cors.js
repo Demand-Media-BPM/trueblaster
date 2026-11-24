@@ -9,11 +9,15 @@ const allowedOrigins = [
   "https://truenotsendr.com",
   "https://truesendr007.netlify.app",
   "https://app.demandmediaglobal.com",
+  "https://api.demandmediaglobal.com",
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    let backendOrigin;
+    try { backendOrigin = new URL(process.env.PUBLIC_API_URL).origin; } catch { }
+    // A recipient submits the confirmation form from the API origin itself.
+    if (!origin || allowedOrigins.includes(origin) || origin === backendOrigin) {
       callback(null, true);
     } else {
       console.error("⛔ CORS blocked origin:", origin);

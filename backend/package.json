@@ -13,14 +13,17 @@
     "mongoose": "^8.12.1",
     "multer": "^2.4.0",
     "ua-parser-js": "^2.0.4",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "cheerio": "1.0.0"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test": "node scripts/run-tests.js",
     "workspace:create": "node scripts/create-workspace.js",
     "db:bootstrap": "node scripts/bootstrap-users.js",
-    "db:migrate-email": "node scripts/migrate-email-auth.js"
+    "db:migrate-email": "node scripts/migrate-email-auth.js",
+    "db:local:init": "node scripts/init-local-mongo.js",
+    "check:local": "node scripts/check-local-readiness.js"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.3.0"

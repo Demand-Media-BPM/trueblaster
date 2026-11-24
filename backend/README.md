@@ -1,4 +1,10 @@
-# Trueblaster backend
+# TrueBlaster backend
+
+20 November: shared Atlas `trueblaster` is explicitly enabled locally with `ALLOW_PRODUCTION_DATABASE_LOCAL=true` in development. The worker stays off and local startup skips automatic index creation and metadata cleanup. Local UI changes affect the production database.
+
+For the current local-only workflow, start with [LOCAL_TESTING.md](LOCAL_TESTING.md). The local worker remains off; local MongoDB uses the isolated trueblaster_local database.
+
+See [SENDGRID.md](SENDGRID.md) for the SendGrid audit, required setup, testing and production deployment runbook.
 
 ## Structure
 
@@ -18,7 +24,7 @@ backend/
 
 - `server.js` configures Express, connects MongoDB, starts HTTP and the delivery worker, and handles shutdown.
 - `src/config/` contains database and CORS settings.
-- `src/controller/` contains request handling and application logic, including campaign delivery, mail rendering, tracking, and SNS notifications.
+- `src/controller/` contains request handling and application logic, including campaign delivery, mail rendering, tracking, and signed provider webhooks.
 - `src/middleware/` contains authentication, password/token helpers, request validation/error handling, and uploads.
 - `src/models/` has one schema per file, with explicit imports and no model index file.
 - `src/routes/` only registers endpoints and their middleware/controllers.
@@ -29,7 +35,7 @@ backend/
 
 Start the backend directly with `node server.js`, or use `npm start` (the same command).
 
-Use Node.js 22 or later. From backend run npm ci, then configure .env using .env.example. MONGO_URI includes the database name (trueblaster). AUTH_SECRET and TRACKING_SECRET must be independent random values of at least 32 characters. Never commit .env.
+Use Node.js 22 or later. From backend run npm ci, then configure .env using .env.example. For local development MONGO_URI must select trueblaster_local; the trueblaster database name is production-only and is rejected locally. AUTH_SECRET and TRACKING_SECRET must be independent random values of at least 32 characters. Never commit .env.
 
 Run npm run workspace:create to create a workspace and its owner. Email is globally unique for email/password login. Signup requires firstName, lastName, email, and password; each signup creates an isolated workspace and owner. Each owner belongs to one workspace. Passwords are scrypt hashes in users. Owner names/email, workspace names/slugs, and sender email are entered interactively; the password is not echoed on a terminal.
 
@@ -37,7 +43,7 @@ Legacy FULL_USERS/LIMITED_USERS entries remain pending and are not imported or a
 
 When upgrading an earlier username schema, run npm run db:migrate-email before creating additional users. It refuses to remove the old username index if there are accounts without an explicit email mapping.
 
-Run npm start. The database-backed worker restores queued/scheduled campaigns after restart. Without AWS configuration it leaves the queue untouched. No emails are sent by database setup or bootstrap commands.
+Run npm start. Delivery is opt-in with ENABLE_CAMPAIGN_WORKER=true. The worker restores only campaigns belonging to this SENDGRID_PROJECT_ID; legacy SES queues remain untouched. No emails are sent by database setup or bootstrap commands.
 
 ## Database
 
@@ -47,7 +53,7 @@ Every business document has workspaceId; every management query derives it from 
 
 Imports and campaign snapshots use MongoDB transactions and require a replica set (Atlas supports this). Imports accept up to 20,000 rows / 10 MB per request. Repeat imports merge contacts by normalized email and add membership without duplicating it. Deleting a list removes membership links, preserving contacts and campaign history.
 
-Campaign content and recipient personalization are snapshots. Accepted by SES is distinct from delivered. Recipient outcomes and immutable events feed analytics; no duplicated per-campaign event collections or separate message-map collection is needed.
+Campaign content and recipient personalization are snapshots. Accepted by SendGrid is distinct from delivered. Recipient outcomes and immutable events feed analytics; no duplicated per-campaign event collections or separate message-map collection is needed.
 
 ## API compatibility and authentication
 
@@ -57,17 +63,17 @@ Campaign sending now responds when queued, rather than holding a request open fo
 
 ## Sending configuration
 
-AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, FORCE_SES_REGION, and a verified FROM_EMAIL are required to send. A workspace can have its own verified senderEmail; otherwise it uses the platform default. Clients cannot override the configured sender. All workspaces currently share platform SES credentials and configured batch limits. Per-customer SES credentials, quotas, and billing are separate features.
+SENDGRID_API_KEY, SENDGRID_PROJECT_ID and an allowed, authenticated FROM_EMAIL are required to send. Configure FROM_NAME and REPLY_TO_EMAIL for the sender and replies. Campaign creation also requires SENDGRID_WEBHOOK_PUBLIC_KEY. Company name is optional; sender postal compliance comes from administrator-configured workspace/application settings or a centrally approved address already visible in the template. No company/address inputs are accepted from the campaign form. Missing compliance blocks campaign creation/delivery with a configuration error. See SENDGRID.md for approval and fallback rules. Workspace senderEmail must belong to SENDGRID_ALLOWED_SENDERS (defaults to FROM_EMAIL). Clients cannot override the configured sender. All workspaces share this backend integration and pacing configuration; per-customer provider credentials and billing are separate features.
 
 PUBLIC_API_URL is the externally reachable backend origin used in email links. localhost is suitable for local API development only; recipients need a public HTTPS URL for working email tracking/unsubscribe links. IPINFO_TOKEN retains location analytics. TRUST_PROXY is optional and should describe only your trusted reverse proxy, e.g. loopback; the default does not trust forwarded headers.
 
-Set SES_SNS_TOPIC_ARNS to a comma-separated allowlist of your SES notification topic ARNs and point SNS at /api/campaign/ses-webhook. Signatures and certificate URLs are verified before subscription confirmation or notification processing. Deliveries, bounces, and complaints use SES message IDs to find the correct workspace. Notifications arriving before message persistence return 503 for SNS retry.
+Historical SES callbacks only: set SES_SNS_TOPIC_ARNS to a comma-separated allowlist of your SES notification topic ARNs and point SNS at /api/campaign/ses-webhook. Signatures and certificate URLs are verified before subscription confirmation or notification processing. Deliveries, bounces, and complaints use SES message IDs to find the correct workspace. Notifications arriving before message persistence return 503 for SNS retry.
 
-The worker leases campaigns in MongoDB and rechecks suppressions immediately before each send. Sending has no automatic SES retries: network timeouts or interrupted sends become unknown/needs_review, preventing blind duplicate sends. Review those recipients against SES before any manual retry. Exactly-once email delivery cannot be guaranteed across SES and MongoDB. Database failures do not trigger automatic resends of a recipient already attempted.
+The worker leases campaigns in MongoDB and rechecks suppressions immediately before each send. Sending has no automatic provider retries: network timeouts or interrupted sends become unknown/needs_review, preventing blind duplicate sends. Review those recipients against SendGrid before any manual retry. Exactly-once email delivery cannot be guaranteed across SendGrid and MongoDB. Database failures do not trigger automatic resends of a recipient already attempted.
 
 ## Tests
 
-npm test starts an isolated temporary MongoDB replica set, exercises real transactions, duplicate imports, two-workspace isolation, object-ID ownership, signed tracking, suppressions, analytics/CSV/progress, logout revocation, and interrupted worker recovery. SES is stubbed; no live email is sent. mongodb-memory-server may download a MongoDB binary on its first run.
+npm test starts an isolated temporary MongoDB replica set, exercises real transactions, duplicate imports, two-workspace isolation, object-ID ownership, signed tracking, suppressions, analytics/CSV/progress, logout revocation, and interrupted worker recovery. SendGrid transports and historical SES notifications are stubbed; no live email is sent. Signed webhook batches, duplicates, project isolation, out-of-order events, bounce classification, early callbacks, and unsubscribe confirmation/one-click handling are also tested. mongodb-memory-server may download a MongoDB binary on its first run.
 
 ## Existing data
 
@@ -79,7 +85,7 @@ The Excel dependency is installed from the maintained official SheetJS distribut
 
 ## Frontend synchronization
 
-GET /me validates the current session and returns the user profile and workspace metadata, including senderEmail and mailConfigured. It never returns SES credentials or password hashes. Frontend reloads verify this endpoint before displaying workspace screens. The sender shown in test-email UI is read-only; sending remains disabled until backend mail configuration is ready. Existing business API formats are retained. Recipient detail error includes a skip reason when applicable.
+GET /me validates the current session and returns the user profile and workspace metadata, including senderEmail and mailConfigured. It never returns provider credentials or password hashes. Frontend reloads verify this endpoint before displaying workspace screens. The sender shown in test-email UI is read-only; sending remains disabled until backend mail configuration is ready. Existing business API formats are retained. Recipient detail error includes a skip reason when applicable.
 
 ## Template images and editor saves
 

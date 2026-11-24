@@ -7,6 +7,16 @@ const workspaceSchema = new mongoose.Schema(
     slug: { type: String, required: true },
     active: { type: Boolean, default: true },
     senderEmail: { type: String, default: "" },
+    // Administrative configuration only; signup and campaign requests cannot set these approvals.
+    compliance: {
+      type: new mongoose.Schema({
+        companyName: String,
+        postalAddress: String,
+        approvedPostalAddresses: [String],
+        approvedUnsubscribeUrls: [String],
+      }, { _id: false }),
+      default: undefined,
+    },
   },
   { timestamps: true, collection: "workspaces" }
 );

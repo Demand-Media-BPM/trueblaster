@@ -29,6 +29,18 @@ const campaignRecipientSchema = new mongoose.Schema(
       default: "pending",
     },
     messageId: String,
+    provider: String,
+    sendAttemptId: String,
+    providerMessageId: String,
+    deliveryStatus: String,
+    deliveryReason: { type: String, default: "" },
+    smtpStatus: String,
+    lastDeliveryEventAt: Date,
+    processedAt: Date,
+    deliveredAt: Date,
+    softBounceAt: Date,
+    deferredAt: Date,
+    complaint: { type: Boolean, default: false },
     sendAt: Date,
     attemptedAt: Date,
     error: { type: String, default: "" },
@@ -42,5 +54,7 @@ const campaignRecipientSchema = new mongoose.Schema(
 campaignRecipientSchema.index({ workspaceId: 1, campaignId: 1, email: 1 }, { unique: true });
 campaignRecipientSchema.index({ workspaceId: 1, campaignId: 1, status: 1 });
 campaignRecipientSchema.index({ messageId: 1 }, { sparse: true });
+
+campaignRecipientSchema.index({ workspaceId: 1, campaignId: 1, sendAttemptId: 1 });
 
 module.exports = mongoose.model("CampaignRecipient", campaignRecipientSchema);

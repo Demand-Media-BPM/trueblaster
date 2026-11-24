@@ -1,12 +1,28 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
-const { MongoMemoryReplSet } = require("mongodb-memory-server");
+const { testDatabase } = require("./helpers/database");
 const xlsx = require("xlsx");
+process.env.NODE_ENV = "test";
+process.env.SENDGRID_TEST_MODE = "true";
+process.env.SENDGRID_TEST_RUN_ID = "automated-tests";
+process.env.SENDGRID_TEST_MAX_RECIPIENTS = "10";
+process.env.SENDGRID_TEST_RECIPIENT_ALLOWLIST = "sender@example.com,test@example.com,alice@example.com,bob@example.com,CHARLIE@example.com,charlie@example.com,invalid@example.com,SAME@example.com,same@example.com,blocked@example.com";
+process.env.IPINFO_TOKEN = "";
+
+process.env.SENDGRID_ALLOWED_SENDERS = "sender@example.com";
+process.env.REPLY_TO_EMAIL = "sender@example.com";
+process.env.SENDGRID_UNSUBSCRIBE_GROUP_ID = "";
 process.env.AUTH_SECRET = "a".repeat(64);
 process.env.TRACKING_SECRET = "t".repeat(64);
 process.env.PUBLIC_API_URL = "http://localhost:5000";
-process.env.FORCE_SES_REGION = "us-east-1";
+process.env.SENDGRID_API_KEY = "test-only";
+process.env.SENDGRID_PROJECT_ID = "trueblaster-test";
+process.env.SENDGRID_WEBHOOK_PUBLIC_KEY = require("crypto").generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" }).toString("base64");
+process.env.COMPLIANCE_APPROVED_POSTAL_ADDRESSES = "[]";
+process.env.COMPLIANCE_APPROVED_UNSUBSCRIBE_URLS = "[]";
+process.env.COMPANY_NAME = "Test Company";
+process.env.COMPANY_POSTAL_ADDRESS = "123 Fixture Road, Sample City, 12345";
 process.env.AWS_ACCESS_KEY_ID = "test-only";
 process.env.AWS_SECRET_ACCESS_KEY = "test-only";
 process.env.FROM_EMAIL = "sender@example.com";
@@ -33,10 +49,7 @@ const { applyNotification, signingString } = require("../src/controller/webhook.
 const app = require("../server");
 let replica, server, base;
 before(async () => {
-  replica = await MongoMemoryReplSet.create({
-    replSet: { count: 1 },
-    instanceOpts: [{ launchTimeout: 60000 }],
-  });
+  replica = await testDatabase("workspace_tests");
   process.env.MONGO_URI = replica.getUri("workspace_tests");
   await connectDatabase();
   server = app.listen(0, "127.0.0.1");
@@ -449,7 +462,9 @@ test("workspace isolation across contacts, templates, suppressions, campaigns, t
       });
       const url = new URL(trackingUrl(ca, recipient, "unsubscribe"));
       assert.equal((await request(url.pathname + url.search)).status, 200);
-      assert.equal((await request(url.pathname + url.search)).status, 200);
+      assert.equal(await models.Suppression.countDocuments({ workspaceId: alice._id, reason: "unsubscribed" }), 0);
+      assert.equal((await request(url.pathname + url.search, { method: "POST", body: { confirm: "unsubscribe" } })).status, 200);
+      assert.equal((await request(url.pathname + url.search, { method: "POST", body: { confirm: "unsubscribe" } })).status, 200);
       assert.equal(
         await models.Suppression.countDocuments({
           workspaceId: alice._id,
@@ -539,7 +554,10 @@ test("workspace isolation across contacts, templates, suppressions, campaigns, t
       assert.equal((await models.Campaign.findById(interrupted._id)).status, "needs_review");
     }
   );
-  await t.test("open/click analytics count signed events only in their workspace", async () => {
+  await t.test("legacy open/click analytics count signed events only in their workspace", async () => {
+    // Simulate a historical SES campaign: new SendGrid campaigns use webhook tracking only.
+    await models.Campaign.updateOne({ _id: cb._id }, { $unset: { provider: 1 } });
+    await models.CampaignRecipient.updateMany({ campaignId: cb._id }, { $unset: { provider: 1 } });
     const recipient = await models.CampaignRecipient.findOne({
       workspaceId: bob._id,
       campaignId: cb._id,

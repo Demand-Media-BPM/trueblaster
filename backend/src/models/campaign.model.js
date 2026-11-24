@@ -12,6 +12,25 @@ const campaignSchema = new mongoose.Schema(
     listId: { type: mongoose.Schema.Types.ObjectId, ref: "ContactList", required: true },
     listName: { type: String, required: true },
     senderEmail: { type: String, required: true },
+    testMode: Boolean,
+    testRunId: String,
+    provider: String,
+    sendgridProject: String,
+    senderName: String,
+    replyTo: String,
+    companyName: String,
+    postalAddress: String,
+    // Snapshot central settings; never rewrite the campaign's original HTML/CSS.
+    compliance: {
+      type: new mongoose.Schema({
+        companyName: String,
+        postalAddress: String,
+        approvedPostalAddresses: [String],
+        approvedUnsubscribeUrls: [String],
+      }, { _id: false }),
+      default: undefined,
+    },
+    unsubscribeGroupId: Number,
     redirectUrl: { type: String, default: "" },
     scheduleTime: { type: Date, required: true },
     status: {

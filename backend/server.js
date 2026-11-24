@@ -16,6 +16,7 @@ app.disable("x-powered-by");
 app.set("trust proxy", process.env.TRUST_PROXY || false);
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+app.use("/api/webhooks", require("./src/routes/webhook.routes"));
 app.use(express.json({ limit: "2mb" }));
 app.get("/", (req, res) => res.send("Backend is running!"));
 registerRoutes(app);
@@ -32,6 +33,11 @@ async function main() {
   )
     throw new Error("Authentication and tracking secrets must be configured");
   await connectDatabase();
+  const sharedDatabase = require("./src/config/local-safety").usingSharedDatabaseLocally();
+  const stopMetadataRetention = sharedDatabase
+    ? () => {}
+    : require("./src/controller/tracking.controller").startMetadataRetention();
+  if (sharedDatabase) console.log("Shared Atlas database: local automatic index creation and metadata cleanup are disabled.");
   const server = http.createServer(app);
   server.requestTimeout = 60000;
   const port = Number(process.env.PORT || 5000);
@@ -53,6 +59,7 @@ async function main() {
     timeout.unref();
     await new Promise((resolve) => server.close(resolve));
     await stopWorker();
+    stopMetadataRetention();
     await mongoose.disconnect();
     clearTimeout(timeout);
   }
