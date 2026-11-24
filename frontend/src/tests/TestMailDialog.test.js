@@ -65,3 +65,10 @@ test("reopening the test dialog does not silently reuse a previously selected te
   ).toBeInTheDocument();
   expect(axios.post).not.toHaveBeenCalled();
 });
+
+test("preview stays enabled when bulk campaigns are blocked by their separate configuration", async () => {
+  axios.get.mockResolvedValue({data:{workspace:{senderEmail:"configured@example.com",mailConfigured:true,campaignConfigured:false}}});
+  render(<TestMailDialog open onClose={() => {}} />);
+  expect(await screen.findByText("Send a preview to any valid email address.")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button",{name:"Send Test"})).toBeEnabled());
+});

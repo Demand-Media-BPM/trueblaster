@@ -1,4 +1,4 @@
-import { previewDocument, publicImageUrl, STARTER_TEMPLATES } from "../utilities/templateContent";
+import { previewDocument, publicImageUrl, STARTER_TEMPLATES, readHtmlTemplate } from "../utilities/templateContent";
 
 test("preview substitutes only sample fields and preserves unknown personalisation", () => {
   const document = previewDocument("Hello {{firstName}} at {{ companyName }} {{customField}}", "p { color: red; }");
@@ -20,4 +20,10 @@ test("every starter includes editable email content and an unsubscribe placehold
     expect(starter.html).toContain("data-email-content");
     expect(starter.css).toContain("max-width: 600px");
   }
+});
+
+test("HTML import rejects empty, wrong-type and oversized files", async () => {
+  await expect(readHtmlTemplate(new File([""], "empty.html"))).rejects.toThrow("empty");
+  await expect(readHtmlTemplate(new File(["hello"], "wrong.txt"))).rejects.toThrow(".html");
+  await expect(readHtmlTemplate({ name: "large.html", size: 1000001 })).rejects.toThrow("1 MB");
 });

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { Alert, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Menu, MenuItem, TextField } from "@mui/material";
-import { MoreHorizontal, PanelsTopLeft, Plus, Search, X } from "lucide-react";
+import { MoreHorizontal, PanelsTopLeft, Plus, Search, Upload, X } from "lucide-react";
 import PageHeader from "../component/PageHeader";
 import TemplateEditor from "../component/TemplateEditor";
 import { API_URL, getErrorMessage } from "../utilities/api";
-import { previewDocument, STARTER_TEMPLATES } from "../utilities/templateContent";
+import { previewDocument, STARTER_TEMPLATES, readHtmlTemplate } from "../utilities/templateContent";
 import "../styling/TemplateEditor.css";
 
 export default function MailPreview() {
@@ -43,6 +43,18 @@ export default function MailPreview() {
     setDialog({ kind, template });
   }
 
+  async function importHtml(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBusy(true); setError("");
+    try {
+      const html = await readHtmlTemplate(file);
+      openDialog("import", { name: file.name.replace(/\.html?$/i, "").slice(0, 150), html });
+    } catch (failure) { setError(failure.message || "Unable to read this HTML file."); }
+    finally { setBusy(false); }
+  }
+
   async function submitDialog(event) {
     event.preventDefault();
     if (busy) return;
@@ -61,7 +73,10 @@ export default function MailPreview() {
     setError("");
     try {
       const { template, kind } = dialog;
-      if (kind === "delete") {
+      if (kind === "import") {
+        const { data } = await axios.post(`${API_URL}/api/preview`, { name, html: template.html, css: "" });
+        saved(data);
+      } else if (kind === "delete") {
         await axios.delete(`${API_URL}/api/preview/${template._id}`);
         setTemplates(previous => previous.filter(item => item._id !== template._id));
       } else {
@@ -79,11 +94,11 @@ export default function MailPreview() {
   }
 
   const filtered = templates.filter(template => template.name?.toLowerCase().includes(search.toLowerCase()));
-  const dialogTitle = { create: "Create an email template", rename: "Rename template", duplicate: "Duplicate template", delete: "Delete template?" }[dialog?.kind];
+  const dialogTitle = { create: "Create an email template", import: "Upload an HTML template", rename: "Rename template", duplicate: "Duplicate template", delete: "Delete template?" }[dialog?.kind];
 
   return (
     <div className="page">
-      <PageHeader title="Email templates" section="Marketing" description="Start with a design, make it yours, and use it in your next campaign." actions={<Button variant="contained" startIcon={<Plus size={17} />} onClick={() => openDialog("create")}>Create New Template</Button>} />
+      <PageHeader title="Email templates" section="Marketing" description="Start with a design, make it yours, and use it in your next campaign." actions={<><Button component="label" variant="outlined" startIcon={<Upload size={17} />} disabled={busy}>Upload HTML<input aria-label="Upload HTML template" type="file" accept=".html,.htm,text/html" hidden onChange={importHtml} /></Button><Button variant="contained" startIcon={<Plus size={17} />} onClick={() => openDialog("create")}>Create New Template</Button></>} />
       {error && !dialog && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <div className="toolbar">
         <label className="search-control"><Search size={17} /><input aria-label="Search templates" placeholder="Search templates..." value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label="Clear template search" onClick={() => setSearch("")}><X size={15} /></button>}</label>
@@ -112,9 +127,10 @@ export default function MailPreview() {
           <DialogContent>
             {error && <Alert severity="error">{error}</Alert>}
             {dialog?.kind === "delete" ? <p>Delete “{dialog.template.name}” from your library? Existing campaigns keep their saved email content.</p> : <TextField autoFocus label="Template name" value={draftName} onChange={event => setDraftName(event.target.value)} fullWidth margin="normal" required inputProps={{ maxLength: 150 }} disabled={busy} />}
-            {dialog?.kind === "create" && <><p className="field-hint">Choose a starting design. You can change every part of it in the editor.</p><div className="starter-grid">{STARTER_TEMPLATES.map(starter => <button type="button" key={starter.id} className="starter-card" aria-pressed={starterId === starter.id} onClick={() => setStarterId(starter.id)}><div className={"starter-art starter-art-" + starter.id}><span /><span /><span /></div><strong>{starter.name}</strong><small>{starter.description}</small></button>)}</div><p className="field-hint">Before sending, replace sample links and the company address in the footer.</p></>}
+            {dialog?.kind === "import" && <p className="field-hint">Your HTML file is saved as uploaded, including embedded styles. Editing it later may change its markup.</p>}
+            {dialog?.kind === "create" && <><p className="field-hint">Choose a starting design. You can change every part of it in the editor.</p><div className="starter-grid">{STARTER_TEMPLATES.map(starter => <button type="button" key={starter.id} className="starter-card" aria-pressed={starterId === starter.id} onClick={() => setStarterId(starter.id)}><div className={"starter-art starter-art-" + starter.id}><span /><span /><span /></div><strong>{starter.name}</strong><small>{starter.description}</small></button>)}</div><p className="field-hint">Review sample links before sending. Sender compliance is managed centrally.</p></>}
           </DialogContent>
-          <DialogActions><Button onClick={() => setDialog(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="contained" color={dialog?.kind === "delete" ? "error" : "primary"} disabled={busy}>{busy ? "Please wait…" : dialog?.kind === "create" ? "Start designing" : dialog?.kind === "delete" ? "Delete template" : "Save"}</Button></DialogActions>
+          <DialogActions><Button onClick={() => setDialog(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="contained" color={dialog?.kind === "delete" ? "error" : "primary"} disabled={busy}>{busy ? "Please wait…" : dialog?.kind === "create" ? "Start designing" : dialog?.kind === "import" ? "Upload template" : dialog?.kind === "delete" ? "Delete template" : "Save"}</Button></DialogActions>
         </form>
       </Dialog>
 

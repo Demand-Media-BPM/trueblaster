@@ -11,6 +11,9 @@ test("API errors preserve actionable backend messages", () => {
 });
 test("worker statuses are rendered consistently", () => {
   expect(statusLabel("needs_review")).toBe("Needs review");
-  expect(statusLabel("accepted")).toBe("Sent");
+  expect(statusLabel("accepted")).toBe("Accepted");
+  expect(statusLabel("blocked")).toBe("Temporarily blocked");
+  expect(statusLabel("deferred")).toBe("Deferred");
+  expect(statusLabel("dropped")).toBe("Dropped");
   expect(statusLabel("scheduled")).toBe("Scheduled");
 });

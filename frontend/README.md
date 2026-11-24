@@ -9,7 +9,7 @@ Signup/login issue a workspace session. On refresh GET /me verifies that session
 
 Contacts, templates, blocklist, unsubscribe lists, campaign queue/progress, analytics and exports use backend response formats. Suppression searches preserve plus-addressed emails. Template previews use sandboxed frames. Test emails use the sender configured on the backend, with no hardcoded sender dropdown.
 
-Send Now submits scheduleTime: null. Schedule submits a future ISO timestamp. Campaign acceptance means queued/scheduled, not that every message has already been delivered. Sending controls reflect workspace mail configuration. Backend AWS credentials must be configured separately.
+Send Now submits scheduleTime: null. Schedule submits a future ISO timestamp. Campaign acceptance means queued/scheduled, not that every message has already been delivered. Sending controls reflect workspace mail configuration. Backend SendGrid configuration must be supplied separately; see ../backend/SENDGRID.md. Never place provider credentials in frontend variables.
 
 Run npm test for UI/request contract tests. Run npm run build for a production bundle. No live emails are sent by the tests.
 

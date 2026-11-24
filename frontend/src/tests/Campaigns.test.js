@@ -57,3 +57,40 @@ test("Schedule submits a future ISO timestamp", async () => {
   await waitFor(() => expect(axios.post).toHaveBeenCalled());
   expect(new Date(axios.post.mock.calls[0][1].scheduleTime).getTime()).toBeGreaterThan(Date.now());
 });
+
+test("campaign reports show real delivery metrics, SMTP reasons, and the privacy limitation", async () => {
+  const summary = { emailId: "Delivery test", status: "completed", totalSent: 3, attemptedCount: 4,
+    deliveredCount: 2, deferredCount: 1, droppedCount: 0, spamReportCount: 1,
+    hardBounceCount: 1, softBounceCount: 0, uniqueOpens: 1, totalOpens: 2,
+    uniqueClicks: 1, totalClicks: 1, openRate: 33.33, clickRate: 33.33, bounceRate: 33.33,
+    unsubscribeCount: 1, unsubscribeRate: 33.33, deliveryRate: 66.67, totalRecipients: 4 };
+  axios.get.mockImplementation(url => Promise.resolve({ data:
+    url.endsWith("/me") ? { workspace: { mailConfigured: true } } :
+    url.endsWith("/campaign-ids") ? ["Delivery test"] :
+    url.endsWith("/campaign-analytics") ? summary :
+    url.endsWith("/campaign-details") ? [{ recipient: "demo@example.com", deliveryStatus: "deferred", deliveryReason: "Try again later", smtpStatus: "421", bounceStatus: "NA", organization: "Fixture ISP", asn: "AS123", userAgent: "Fixture agent" }] :
+    url.endsWith("/send-campaign-progress") ? { sent: 3, processed: 4, total: 4, status: "completed" } : [] }));
+  render(<Campaigns />);
+  fireEvent.click(await screen.findByRole("button", { name: "View Details" }));
+  expect(await screen.findByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("tab", { name: "Opens" }));
+  expect(screen.getByText("Total opens")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Clicks" }));
+  expect(screen.getByText("Total clicks")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Unsubscribes" }));
+  expect(screen.getByText("Unsubscribe rate")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Deliverability" }));
+  expect(screen.getByText("Accepted by provider")).toBeInTheDocument();
+  expect(screen.getByText("66.67%")).toBeInTheDocument();
+  expect(screen.getByText("Deferred (current)")).toBeInTheDocument();
+  expect(screen.getByText("Spam reports")).toBeInTheDocument();
+  expect(screen.getByText(/Opens can include privacy proxies/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Contact details" }));
+  expect(screen.getByRole("columnheader", { name: "Last activity" })).toBeInTheDocument();
+  expect(screen.getByText("Try again later · 421")).toBeInTheDocument();
+  expect(screen.getByText("Deferred")).toBeInTheDocument();
+  expect(screen.getByText("Fixture ISP")).toBeInTheDocument();
+  expect(screen.getByText("AS123")).toBeInTheDocument();
+  expect(screen.getByText("Fixture agent")).toBeInTheDocument();
+  expect(screen.getByText(/Location is approximate network information/)).toBeInTheDocument();
+});

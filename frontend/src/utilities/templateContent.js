@@ -19,7 +19,7 @@ const emailCss = `
 `;
 
 function layout(content) {
-  return `<table role="presentation" width="100%"><tbody><tr><td style="padding:24px 12px"><table role="presentation" class="email-container" align="center" width="600"><tbody><tr><td class="email-content" data-email-content="true">${content}</td></tr><tr><td style="padding:24px 36px;color:#7c8774;font-size:12px;line-height:1.6"><p>Your company · Your postal address</p><a href="{{unsubscribeUrl}}" style="color:#536b56">Unsubscribe</a></td></tr></tbody></table></td></tr></tbody></table>`;
+  return `<table role="presentation" width="100%"><tbody><tr><td style="padding:24px 12px"><table role="presentation" class="email-container" align="center" width="600"><tbody><tr><td class="email-content" data-email-content="true">${content}</td></tr><tr><td style="padding:24px 36px;color:#7c8774;font-size:12px;line-height:1.6"><a href="{{unsubscribeUrl}}" style="color:#536b56">Unsubscribe</a></td></tr></tbody></table></td></tr></tbody></table>`;
 }
 
 export const STARTER_TEMPLATES = [
@@ -75,4 +75,18 @@ export function publicImageUrl(value) {
   } catch {
     return null;
   }
+}
+
+// Read imported source as text only; never parse/reformat it before storage.
+export async function readHtmlTemplate(file) {
+  if (!file || !/\.html?$/i.test(file.name || "")) throw new Error("Choose an .html or .htm template file.");
+  if (file.size > 1000000) throw new Error("HTML templates must be at most 1 MB.");
+  const html = typeof file.text === "function" ? await file.text() : await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to read this HTML file."));
+    reader.readAsText(file, "UTF-8");
+  });
+  if (!html.trim()) throw new Error("The HTML file is empty.");
+  return html;
 }

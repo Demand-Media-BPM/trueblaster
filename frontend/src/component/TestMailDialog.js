@@ -88,6 +88,7 @@ export default function TestMailDialog({ open, onClose }) {
         />
         <TextField
           label="Receiver email"
+          helperText="Send a preview to any valid email address."
           type="email"
           value={receiver}
           onChange={(e) => setReceiver(e.target.value)}

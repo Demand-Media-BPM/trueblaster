@@ -25,6 +25,8 @@ import {
   Alert,
   AlertTitle,
   Paper,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import axios from "axios";
 import TemplateDropdown from "../component/TemplateDropdown";
@@ -52,7 +54,7 @@ function CampaignProgress({ emailId }) {
         });
         if (!disposed) {
           setProgress(data.total ? Math.round((data.processed / data.total) * 100) : 0);
-          setStatus(`${statusLabel(data.status)}: ${data.sent}/${data.total} sent`);
+          setStatus(`${statusLabel(data.status)}: ${data.sent}/${data.total} accepted`);
         }
       } catch (error) {
         if (!disposed) setStatus("Unable to load progress");
@@ -83,6 +85,7 @@ export default function Campaigns() {
   const [campaignSearch, setCampaignSearch] = useState("");
   const [error, setError] = useState("");
   const [mailReady, setMailReady] = useState(null);
+  const [mailConfigurationMessage, setMailConfigurationMessage] = useState("");
   const pollBusy = useRef(false);
   const [listOptions, setListOptions] = useState([]);
   const [open, setOpen] = useState(false);
@@ -95,6 +98,7 @@ export default function Campaigns() {
   const [statusText, setStatusText] = useState("");
   const [testOpen, setTestOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [analyticsTab, setAnalyticsTab] = useState(0);
   const [dialogData, setDialogData] = useState([]);
   const [campaignSummary, setCampaignSummary] = useState(null);
   const [selectedEmailId, setSelectedEmailId] = useState(null);
@@ -144,7 +148,10 @@ export default function Campaigns() {
     const controller = new AbortController();
     axios
       .get(API_URL + "/me", { signal: controller.signal })
-      .then(({ data }) => setMailReady(data.workspace.mailConfigured))
+      .then(({ data }) => {
+        setMailReady(data.workspace.campaignConfigured ?? data.workspace.mailConfigured);
+        setMailConfigurationMessage(data.workspace.mailConfigurationMessage || "");
+      })
       .catch((err) => {
         if (err.code !== "ERR_CANCELED") setError(getErrorMessage(err));
       });
@@ -210,6 +217,7 @@ export default function Campaigns() {
       ]);
       setCampaignSummary(summaryRes.data);
       setDialogData(detailsRes.data);
+      setAnalyticsTab(0);
       setAnalyticsOpen(true);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -260,7 +268,7 @@ export default function Campaigns() {
       )}
       {mailReady === false && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Email sending is not configured for this workspace.
+          {mailConfigurationMessage || "Email sending is not configured for this workspace."}
         </Alert>
       )}
       {statusText && !open && (
@@ -363,7 +371,7 @@ export default function Campaigns() {
           </Button>
 
           {/* Schedule (respects selected date/time) */}
-          <Button variant="contained" onClick={() => sendCampaign(false)} disabled={loading}>
+          <Button variant="contained" onClick={() => sendCampaign(false)} disabled={loading || mailReady !== true}>
             Schedule
           </Button>
         </DialogActions>
@@ -371,73 +379,102 @@ export default function Campaigns() {
 
       <div className="toolbar"><label className="search-control"><Search size={17} /><input aria-label="Search campaigns" placeholder="Search campaigns..." value={campaignSearch} onChange={event => setCampaignSearch(event.target.value)} /></label><span className="toolbar-meta">{campaigns.length} {campaigns.length === 1 ? "campaign" : "campaigns"}</span></div>
       {campaigns.length === 0 ? <div className="empty-state"><Megaphone size={34} /><h3>Your next connection starts here</h3><p>Create your first campaign, choose a contact list, and make it yours.</p></div> :
-        <div className="surface" style={{ overflowX: "auto" }}><Table className="campaign-table" aria-label="Email campaigns"><TableHead><TableRow><TableCell>Campaign</TableCell><TableCell>Status</TableCell><TableCell align="right">Sent</TableCell><TableCell align="right">Opens</TableCell><TableCell align="right">Clicks</TableCell><TableCell align="right">Bounces</TableCell><TableCell align="right">Report</TableCell></TableRow></TableHead><TableBody>
+        <div className="surface" style={{ overflowX: "auto" }}><Table className="campaign-table" aria-label="Email campaigns"><TableHead><TableRow><TableCell>Campaign</TableCell><TableCell>Status</TableCell><TableCell align="right">Accepted</TableCell><TableCell align="right">Delivered</TableCell><TableCell align="right">Opens</TableCell><TableCell align="right">Clicks</TableCell><TableCell align="right">Bounces</TableCell><TableCell align="right">Report</TableCell></TableRow></TableHead><TableBody>
         {[...campaigns].reverse().filter(campaign => campaign.emailId.toLowerCase().includes(campaignSearch.toLowerCase())).map(campaign => <TableRow key={campaign.emailId}>
           <TableCell><span className="campaign-name">{campaign.emailId}</span><span className="campaign-date">Created {formatDate(campaign.lastActivity)}</span></TableCell>
           <TableCell><span className={"status-badge status-" + campaign.status}>{statusLabel(campaign.status)}</span><div className="campaign-progress"><CampaignProgress emailId={campaign.emailId} /></div></TableCell>
           <TableCell align="right"><span className="metric-value">{campaign.totalSent ?? 0}</span></TableCell>
+          <TableCell align="right">{campaign.deliveredCount ?? 0}</TableCell>
           <TableCell align="right">{campaign.totalOpens ?? 0}</TableCell><TableCell align="right">{campaign.totalClicks ?? 0}</TableCell>
           <TableCell align="right">{(campaign.hardBounceCount || 0) + (campaign.softBounceCount || 0)}</TableCell>
           <TableCell align="right"><Button variant="outlined" size="small" onClick={() => openAnalytics(campaign.emailId)}>View Details</Button></TableCell>
         </TableRow>)}
-        {!campaigns.some(campaign => campaign.emailId.toLowerCase().includes(campaignSearch.toLowerCase())) && <TableRow><TableCell colSpan={7}>No campaigns match your search.</TableCell></TableRow>}
+        {!campaigns.some(campaign => campaign.emailId.toLowerCase().includes(campaignSearch.toLowerCase())) && <TableRow><TableCell colSpan={8}>No campaigns match your search.</TableCell></TableRow>}
         </TableBody></Table></div>}
 
       <Dialog open={analyticsOpen} onClose={() => setAnalyticsOpen(false)} fullWidth maxWidth="xl">
         <DialogTitle>Campaign Analytics</DialogTitle>
         <DialogContent>
-          {campaignSummary && (
-            <Box mb={2}>
+          <Tabs value={analyticsTab} onChange={(_, value) => setAnalyticsTab(value)} variant="scrollable" scrollButtons="auto" aria-label="Campaign analytics tabs" sx={{ mb: 3 }}>
+            {['Overview', 'Deliverability', 'Opens', 'Clicks', 'Unsubscribes', 'Contact details'].map((label, index) => (
+              <Tab key={label} label={label} id={'analytics-tab-' + index} aria-controls={'analytics-panel-' + index} />
+            ))}
+          </Tabs>
+          <Box role="tabpanel" id={'analytics-panel-' + analyticsTab} aria-labelledby={'analytics-tab-' + analyticsTab}>
+          {campaignSummary && analyticsTab < 5 && (
+            <Box mb={3}>
               <Grid container spacing={2}>
-                {Object.entries({
-                  Campaign: campaignSummary.emailId,
-                  "Total Sent": campaignSummary.totalSent,
-                  "Unique Opens": campaignSummary.uniqueOpens,
-                  "Total Opens": campaignSummary.totalOpens,
-                  "Open Rate": `${campaignSummary.openRate.toFixed(2)}%`,
-                  "Unique Clicks": campaignSummary.uniqueClicks,
-                  "Total Clicks": campaignSummary.totalClicks,
-                  "Click Rate": `${campaignSummary.clickRate.toFixed(2)}%`,
-                  "Hard Bounces": campaignSummary.hardBounceCount,
-                  "Soft Bounces": campaignSummary.softBounceCount,
-                  "Total Bounces":
-                    campaignSummary.hardBounceCount + campaignSummary.softBounceCount,
-                  "Bounce Rate": `${campaignSummary.bounceRate.toFixed(2)}%`,
-
-                  "Total Unsubscribed": campaignSummary.unsubscribeCount,
-                  "Launch Time": formatDate(campaignSummary.lastActivity),
-                }).map(([key, value], i) => (
-                  <Grid item xs={6} sm={4} md={3} key={i}>
-                    <Paper sx={{ p: 1, textAlign: "center" }}>
-                      <Typography variant="body2" fontWeight="bold">
-                        {key}
-                      </Typography>
-                      <Typography variant="subtitle1">{value}</Typography>
+                {Object.entries((() => {
+                  const c = campaignSummary;
+                  const percent = (value) => (Number(value) || 0).toFixed(2) + '%';
+                  const delivery = { Delivered: c.deliveredCount, 'Delivery rate': percent(c.deliveryRate) };
+                  const opens = { Opens: c.uniqueOpens, 'Open rate': percent(c.openRate), 'Total opens': c.totalOpens };
+                  const clicks = { Clicks: c.uniqueClicks, 'Click rate': percent(c.clickRate), 'Total clicks': c.totalClicks };
+                  const unsubscribe = { Unsubscribed: c.unsubscribeCount, 'Unsubscribe rate': percent(c.unsubscribeRate) };
+                  return [
+                    { Campaign: c.emailId, Status: statusLabel(c.status), Subject: c.subject || 'N/A',
+                      Sender: [c.senderName, c.senderEmail].filter(Boolean).join(' · ') || 'N/A',
+                      'Contact list': c.listName || 'N/A', 'Total recipients': c.totalRecipients,
+                      Created: formatDate(c.createdAt || c.lastActivity), Scheduled: formatDate(c.scheduleTime), Completed: formatDate(c.completedAt),
+                      'Sent to': c.totalSent, ...delivery, ...opens, ...clicks, ...unsubscribe },
+                    { 'Sent to': c.totalSent, 'Accepted by provider': c.totalSent, Attempted: c.attemptedCount,
+                      Processed: c.processedCount, ...delivery, 'Soft bounce': c.softBounceCount, 'Hard bounce': c.hardBounceCount,
+                      'Bounce rate': percent(c.bounceRate), 'Deferred (current)': c.deferredCount, Dropped: c.droppedCount,
+                      'Spam reports': c.spamReportCount, Blocked: c.blockedCount, 'Permanent message blocks': c.permanentBlockCount,
+                      'Unclassified failures': c.unclassifiedBounceCount, 'Ever deferred': c.everDeferredCount,
+                      'Ever soft bounced': c.everSoftBounceCount },
+                    { ...opens, 'Privacy proxy opens': c.machineOpenCount }, clicks, unsubscribe
+                  ][analyticsTab];
+                })()).map(([label, value]) => (
+                  <Grid item xs={12} sm={6} md={3} key={label}>
+                    <Paper variant="outlined" sx={{ p: 2, height: '100%', overflowWrap: 'anywhere' }}>
+                      <Typography variant="body2" color="text.secondary">{label}</Typography>
+                      <Typography variant="h6">{value ?? 0}</Typography>
                     </Paper>
                   </Grid>
                 ))}
               </Grid>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
+                Sent to counts emails accepted by the provider. All rates use this count as the denominator.
+                Opens and clicks count unique recipients; total opens and total clicks include repeat activity.
+              </Typography>
             </Box>
           )}
-          <Box maxHeight="400px" overflow="auto">
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Opens can include privacy proxies and automated scans. Accepted means the provider accepted the request;
+            delivered means the recipient server accepted the email. Completed means campaign submissions finished.
+            Deferred and soft bounce counts show current outcomes; historical counts include recovered deliveries.
+            Location is approximate network information and may belong to a proxy or scanner. Device/browser/OS are inferred from available user-agent data.
+            Complaints and opt-outs can overlap delivery; do not add them to final delivery outcomes.
+          </Alert>
+          {analyticsTab === 5 && <Box maxHeight="500px" overflow="auto">
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell>Campaign</TableCell>
-                  <TableCell>Recipient</TableCell>
-                  <TableCell>Send status</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Last activity</TableCell>
+                  <TableCell>Delivery status</TableCell>
                   <TableCell>Notes</TableCell>
                   <TableCell>Bounced</TableCell>
                   <TableCell>IP</TableCell>
                   <TableCell>City</TableCell>
                   <TableCell>Region</TableCell>
                   <TableCell>Country</TableCell>
+                  <TableCell>ISP / organization</TableCell>
+                  <TableCell>ASN</TableCell>
+                  <TableCell>Traffic / location status</TableCell>
+                  <TableCell>User-Agent</TableCell>
                   <TableCell>Device</TableCell>
                   <TableCell>Browser</TableCell>
                   <TableCell>OS</TableCell>
-                  <TableCell>Total Click</TableCell>
-                  <TableCell>Total Open</TableCell>
+                  <TableCell>Click count</TableCell>
+                  <TableCell>Open count</TableCell>
                   <TableCell>Send At</TableCell>
+                  <TableCell>Last Open</TableCell>
+                  <TableCell>Processed At</TableCell>
+                  <TableCell>Clicked URL</TableCell>
+                  <TableCell>Campaign ID</TableCell>
                   <TableCell>Last Click</TableCell>
                   <TableCell>Unsubscribed</TableCell>
                 </TableRow>
@@ -447,8 +484,9 @@ export default function Campaigns() {
                   <TableRow key={i}>
                     <TableCell>{row.emailId}</TableCell>
                     <TableCell>{row.recipientId || row.recipient}</TableCell>
-                    <TableCell>{statusLabel(row.status)}</TableCell>
-                    <TableCell>{row.error || "?"}</TableCell>
+                    <TableCell>{formatDate([row.sendAt, row.processedAt, row.lastDeliveryEventAt, row.lastOpen, row.lastClick, row.lastEngagementAt].filter(value => value && Number.isFinite(Date.parse(value))).sort((a, b) => Date.parse(b) - Date.parse(a))[0])}</TableCell>
+                    <TableCell>{statusLabel(row.deliveryStatus || row.status)}</TableCell>
+                    <TableCell>{[row.deliveryReason, row.smtpStatus, row.error].filter(Boolean).join(" · ") || "?"}</TableCell>
 
                     <TableCell
                       sx={{
@@ -474,12 +512,20 @@ export default function Campaigns() {
                     <TableCell>{row.city}</TableCell>
                     <TableCell>{row.region}</TableCell>
                     <TableCell>{row.country}</TableCell>
+                    <TableCell>{row.organization || "N/A"}</TableCell>
+                    <TableCell>{row.asn || "N/A"}</TableCell>
+                    <TableCell>{row.trafficType || "unknown"} / {row.geoStatus || "not_provided"}</TableCell>
+                    <TableCell sx={{ maxWidth: 260, overflowWrap: "anywhere" }}>{row.userAgent || "N/A"}</TableCell>
                     <TableCell>{row.device}</TableCell>
                     <TableCell>{row.browser}</TableCell>
                     <TableCell>{row.os}</TableCell>
                     <TableCell>{row.totalClick}</TableCell>
                     <TableCell>{row.totalOpen}</TableCell>
                     <TableCell>{formatDate(row.sendAt)}</TableCell>
+                    <TableCell>{formatDate(row.lastOpen)}</TableCell>
+                    <TableCell>{formatDate(row.processedAt)}</TableCell>
+                    <TableCell sx={{ maxWidth: 260, overflowWrap: "anywhere" }}>{row.clickedUrl || "N/A"}</TableCell>
+                    <TableCell>{row.campaignId || "N/A"}</TableCell>
                     <TableCell>{formatDate(row.lastClick)}</TableCell>
                     <TableCell
                       sx={{
@@ -493,6 +539,7 @@ export default function Campaigns() {
                 ))}
               </TableBody>
             </Table>
+          </Box>}
           </Box>
         </DialogContent>
         <DialogActions>

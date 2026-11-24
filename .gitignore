@@ -45,3 +45,9 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+
+# Local MongoDB data and temporary implementation staging
+backend/.local-mongo/
+.readiness-stage/
+.sendgrid-stage/
+.compliance-stage/
